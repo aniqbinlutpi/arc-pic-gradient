@@ -282,6 +282,18 @@ export function ImageGradientUpload() {
 
   };
 
+  const handleRemoveImage = () => {
+    if (previewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    setFileBaseName("image");
+    setPalette(DEFAULT_COLORS);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const drawRoundedRect = (
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -404,12 +416,25 @@ export function ImageGradientUpload() {
           </div>
           <div className="relative mx-auto aspect-square w-full max-w-[min(62vw,42dvh)] overflow-hidden rounded-xl bg-white/20 shadow-2xl ring-1 ring-white/40 backdrop-blur-sm sm:max-w-[min(420px,46dvh)]">
             {previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={previewUrl}
-                alt="Uploaded preview"
-                className="h-full w-full object-cover"
-              />
+              <>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="absolute right-2 top-2 z-10 h-8 w-8 rounded-full bg-white/85 text-zinc-700 shadow hover:bg-white"
+                  onClick={handleRemoveImage}
+                  aria-label="Remove image"
+                  title="Remove image"
+                >
+                  <span aria-hidden="true" className="text-base leading-none">✕</span>
+                </Button>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt="Uploaded preview"
+                  className="h-full w-full object-cover"
+                />
+              </>
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white/45 via-white/20 to-black/10 px-6 text-center text-zinc-700">
                 Select an image to preview it with an extracted gradient background
