@@ -1,14 +1,22 @@
 "use client";
 
 function isLikelyBrokenJfifHeader(bytes: Uint8Array) {
+  const hasJfifSignature =
+    bytes[6] === 0x4a &&
+    bytes[7] === 0x46 &&
+    bytes[8] === 0x49 &&
+    bytes[9] === 0x46;
+  const hasExifSignature =
+    bytes[6] === 0x45 &&
+    bytes[7] === 0x78 &&
+    bytes[8] === 0x69 &&
+    bytes[9] === 0x66;
+
   return (
     bytes.length > 12 &&
     !(bytes[0] === 0xff && bytes[1] === 0xd8) &&
     bytes[3] === 0xe0 &&
-    bytes[6] === 0x4a &&
-    bytes[7] === 0x46 &&
-    bytes[8] === 0x49 &&
-    bytes[9] === 0x46
+    (hasJfifSignature || hasExifSignature)
   );
 }
 
