@@ -443,34 +443,43 @@ export function ImageGradientUpload() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="mx-auto flex w-full max-w-[520px] items-center gap-2">
           <Input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             onChange={handleFileChange}
-            className="h-10 bg-white/90 text-sm"
+            className="h-10 flex-1 bg-white/90 text-sm"
           />
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              className="h-10 min-w-28 bg-zinc-700 text-white hover:bg-zinc-800"
-              onClick={() => {
-                fileInputRef.current?.click();
-              }}
-            >
-              Upload
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-10 min-w-28"
-              onClick={handleDownload}
-              disabled={!previewUrl || isDownloading}
-            >
-              {isDownloading ? "Preparing..." : "Download"}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            size="icon"
+            className="h-10 w-10 bg-zinc-900 text-white hover:bg-zinc-800"
+            onClick={handleDownload}
+            disabled={!previewUrl || isDownloading}
+            aria-label={isDownloading ? "Preparing download" : "Download image"}
+            title={isDownloading ? "Preparing..." : "Download"}
+          >
+            {isDownloading ? (
+              <span className="text-xs">...</span>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M5 21h14" />
+              </svg>
+            )}
+          </Button>
         </div>
 
       </CardContent>
