@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import type { CSSProperties } from "react";
 
+import { AnimatedThemeToggler } from "./components/ui/animated-theme-toggler";
+import { loadImageFromUrl, repairImageUrl, revokeObjectUrls } from "./lib/image-repair";
+
 export type ImageGradientUploadProps = {
   className?: string;
   title?: string;
@@ -106,12 +109,7 @@ function enhanceColor(color: RGB): RGB {
 }
 
 async function extractColorsFromImage(url: string): Promise<RGB[]> {
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
+  const image = await loadImageFromUrl(url);
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -236,19 +234,24 @@ export function ImageGradientUpload({
   title = "Adding Background Tool (ABT)",
   description = "Upload an image and generate a soft gradient background from its colors.",
 }: ImageGradientUploadProps) {
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string | null>(null);
+  const [repairedPreviewUrl, setRepairedPreviewUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [hasPreviewDecodeError, setHasPreviewDecodeError] = useState(false);
   const [palette, setPalette] = useState<RGB[]>(DEFAULT_COLORS);
   const [fileBaseName, setFileBaseName] = useState<string>("image");
   const [isDownloading, setIsDownloading] = useState(false);
+  const [, setIsRepairing] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
-      if (previewUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      revokeObjectUrls(previewUrl, originalPreviewUrl, repairedPreviewUrl);
     };
-  }, [previewUrl]);
+  }, [previewUrl, originalPreviewUrl, repairedPreviewUrl]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -277,6 +280,79 @@ export function ImageGradientUpload({
     };
   }, [previewUrl]);
 
+  useEffect(() => {
+    const updateTheme = () => {
+      setIsDarkMode(document.documentElement.classList.contains("dark"));
+      setImageError(null);
+    };
+
+    updateTheme();
+
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!originalPreviewUrl) {
+      setPreviewUrl(null);
+      return;
+    }
+
+    if (!isDarkMode) {
+      setPreviewUrl(originalPreviewUrl);
+      return;
+    }
+
+    if (repairedPreviewUrl) {
+      setPreviewUrl(repairedPreviewUrl);
+      return;
+    }
+
+    if (!uploadedFile) {
+      setPreviewUrl(originalPreviewUrl);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsRepairing(true);
+
+    repairImageUrl(uploadedFile)
+      .then((repairedUrl) => {
+        if (isCancelled) {
+          revokeObjectUrls(repairedUrl);
+          return;
+        }
+
+        setRepairedPreviewUrl((current) => {
+          revokeObjectUrls(current);
+          return repairedUrl;
+        });
+        setPreviewUrl(repairedUrl);
+        setHasPreviewDecodeError(false);
+        setImageError(null);
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setPreviewUrl(originalPreviewUrl);
+          setImageError(error instanceof Error ? error.message : "Unable to repair this image.");
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsRepairing(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isDarkMode, originalPreviewUrl, repairedPreviewUrl, uploadedFile]);
+
   const gradientStyle = useMemo(() => {
     const colors = palette.length >= 4 ? palette : DEFAULT_COLORS;
 
@@ -290,29 +366,34 @@ export function ImageGradientUpload({
     } as CSSProperties;
   }, [palette]);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
 
     if (!file) {
       return;
     }
 
-    if (previewUrl?.startsWith("blob:")) {
-      URL.revokeObjectURL(previewUrl);
-    }
-
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
+    revokeObjectUrls(previewUrl, originalPreviewUrl);
+    setUploadedFile(file);
+    setRepairedPreviewUrl(null);
+    setHasPreviewDecodeError(false);
     setFileBaseName(file.name.replace(/\.[^/.]+$/, "") || "image");
+    setImageError(null);
+    const objectUrl = URL.createObjectURL(file);
+    setOriginalPreviewUrl(objectUrl);
+    setPreviewUrl(isDarkMode ? null : objectUrl);
   };
 
   const handleRemoveImage = () => {
-    if (previewUrl?.startsWith("blob:")) {
-      URL.revokeObjectURL(previewUrl);
-    }
+    revokeObjectUrls(previewUrl, originalPreviewUrl, repairedPreviewUrl);
+    setUploadedFile(null);
+    setOriginalPreviewUrl(null);
+    setRepairedPreviewUrl(null);
     setPreviewUrl(null);
+    setHasPreviewDecodeError(false);
     setFileBaseName("image");
     setPalette(DEFAULT_COLORS);
+    setImageError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -325,12 +406,7 @@ export function ImageGradientUpload({
 
     setIsDownloading(true);
     try {
-      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new window.Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = previewUrl;
-      });
+      const image = await loadImageFromUrl(previewUrl);
 
       const colors = palette.length >= 4 ? palette : DEFAULT_COLORS;
       const canvas = document.createElement("canvas");
@@ -399,27 +475,44 @@ export function ImageGradientUpload({
       link.href = canvas.toDataURL("image/png");
       link.download = `${fileBaseName}-gradient.png`;
       link.click();
+    } catch (error) {
+      setImageError(
+        error instanceof Error
+          ? error.message
+          : "This image cannot be downloaded in the current mode.",
+      );
     } finally {
       setIsDownloading(false);
     }
   };
 
   return (
-    <div className={`w-full max-w-[760px] rounded-xl border border-white/60 bg-white/70 p-4 shadow-xl backdrop-blur-sm ${className}`}>
+    <div className={`w-full max-w-[760px] rounded-xl border border-white/60 bg-white/70 p-4 shadow-xl backdrop-blur-sm transition-colors duration-300 dark:border-white/10 dark:bg-zinc-900/80 ${className}`}>
       <div className="space-y-1 pb-4 text-center sm:text-left">
-        <h2 className="text-xl font-semibold text-zinc-900 sm:text-2xl">{title}</h2>
-        <p className="text-sm text-zinc-600">{description}</p>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-xl font-semibold text-zinc-900 transition-colors duration-300 dark:text-zinc-100 sm:text-2xl">{title}</h2>
+          <AnimatedThemeToggler
+            className={`relative mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/70 shadow-sm outline-none transition-all duration-300 ease-out focus-visible:ring-3 focus-visible:ring-ring/50 ${
+              isDarkMode
+                ? "bg-zinc-800/95 text-zinc-100 hover:bg-zinc-700"
+                : "bg-white/85 text-zinc-500 hover:bg-white"
+            }`}
+          />
+        </div>
+        <p className="text-sm text-zinc-600 transition-colors duration-300 dark:text-zinc-300">
+          {description}
+        </p>
       </div>
 
       <div className="space-y-4 sm:space-y-5">
-        <div className="relative overflow-hidden rounded-2xl border border-white/40 bg-white/40 p-3 sm:p-4" style={gradientStyle}>
+        <div className="relative overflow-hidden rounded-2xl border border-white/40 bg-white/40 p-3 transition-colors duration-300 dark:border-white/10 dark:bg-white/5 sm:p-4" style={gradientStyle}>
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-10 top-6 h-40 w-40 rounded-full opacity-60 blur-3xl sm:h-48 sm:w-48" style={{ backgroundColor: rgbToCss(palette[0] ?? DEFAULT_COLORS[0], 0.72) }} />
             <div className="absolute right-0 top-16 h-44 w-44 rounded-full opacity-55 blur-3xl sm:h-56 sm:w-56" style={{ backgroundColor: rgbToCss(palette[1] ?? DEFAULT_COLORS[1], 0.68) }} />
             <div className="absolute bottom-0 left-1/3 h-44 w-44 rounded-full opacity-50 blur-3xl sm:h-52 sm:w-52" style={{ backgroundColor: rgbToCss(palette[2] ?? DEFAULT_COLORS[2], 0.62) }} />
           </div>
-          <div className="relative mx-auto aspect-square w-full max-w-[min(62vw,42dvh)] overflow-hidden rounded-xl bg-white/20 shadow-2xl ring-1 ring-white/40 backdrop-blur-sm sm:max-w-[min(420px,46dvh)]">
-            {previewUrl ? (
+          <div className="relative mx-auto aspect-square w-full max-w-[min(62vw,42dvh)] overflow-hidden rounded-xl bg-white/20 shadow-2xl ring-1 ring-white/40 backdrop-blur-sm transition-colors duration-300 dark:bg-white/8 dark:ring-white/10 sm:max-w-[min(420px,46dvh)]">
+            {previewUrl && !hasPreviewDecodeError ? (
               <>
                 <button
                   type="button"
@@ -435,13 +528,48 @@ export function ImageGradientUpload({
                   src={previewUrl}
                   alt="Uploaded preview"
                   className="h-full w-full object-cover"
+                  onError={() => {
+                    setHasPreviewDecodeError(true);
+                    setImageError(null);
+                  }}
                 />
+              </>
+            ) : previewUrl ? (
+              <>
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 z-10 h-8 w-8 rounded-full bg-white/85 text-zinc-700 shadow transition hover:bg-white"
+                  onClick={handleRemoveImage}
+                  aria-label="Remove image"
+                  title="Remove image"
+                >
+                  X
+                </button>
+                <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[linear-gradient(135deg,rgba(255,255,255,0.16),rgba(255,255,255,0.04))]">
+                  <div className="absolute inset-0 opacity-90 [background:repeating-linear-gradient(180deg,rgba(255,255,255,0.05)_0px,rgba(255,255,255,0.05)_9px,rgba(20,20,28,0.08)_9px,rgba(20,20,28,0.08)_18px)]" />
+                  <div className="absolute inset-0 opacity-80 [background:linear-gradient(90deg,rgba(110,231,255,0.35)_0%,rgba(196,181,253,0.32)_48%,rgba(244,114,182,0.35)_100%)]" />
+                  <div className="absolute left-[14%] top-0 h-full w-8 bg-cyan-200/25 blur-md" />
+                  <div className="absolute left-[49%] top-0 h-full w-14 bg-fuchsia-300/25 blur-lg" />
+                  <div className="absolute left-[68%] top-0 h-full w-6 bg-white/20 blur-md" />
+                  <div className="absolute inset-x-0 top-[28%] h-10 bg-white/14 blur-xl" />
+                  <div className="absolute inset-x-0 bottom-[18%] h-16 bg-violet-300/20 blur-2xl" />
+                  <div className="relative z-10 rounded-full border border-white/45 bg-black/30 px-4 py-2 text-xs font-medium uppercase tracking-[0.28em] text-white/80 backdrop-blur-sm">
+                    Corrupted
+                  </div>
+                </div>
               </>
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white/45 via-white/20 to-black/10 px-6 text-center text-zinc-700">
-                Select an image to preview it with an extracted gradient background
+                <span className="transition-colors duration-300 dark:text-zinc-300">
+                  Select an image to preview it with an extracted gradient background
+                </span>
               </div>
             )}
+            {imageError && imageError !== "Failed to decode image" ? (
+              <div className="absolute inset-x-3 bottom-3 rounded-lg bg-black/65 px-3 py-2 text-center text-xs text-white backdrop-blur-sm">
+                {imageError}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -451,11 +579,11 @@ export function ImageGradientUpload({
             type="file"
             accept="image/*"
             onChange={handleFileChange}
-            className="h-10 flex-1 rounded-md border border-zinc-200 bg-white/90 px-3 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-transparent file:px-2 file:py-1 file:text-sm file:font-semibold"
+            className="h-10 flex-1 rounded-md border border-zinc-200 bg-white/90 px-3 text-sm transition-colors duration-300 dark:border-white/10 dark:bg-zinc-950/70 dark:text-zinc-100 file:mr-3 file:rounded-md file:border-0 file:bg-transparent file:px-2 file:py-1 file:text-sm file:font-semibold"
           />
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-zinc-900 text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-zinc-900 text-white transition duration-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
             onClick={handleDownload}
             disabled={!previewUrl || isDownloading}
             aria-label={isDownloading ? "Preparing download" : "Download image"}
