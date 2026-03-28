@@ -211,16 +211,44 @@ async function extractColorsFromImage(url: string): Promise<RGB[]> {
 }
 
 export function ImageGradientUpload() {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string>("");
+  const [previewUrl, setPreviewUrl] = useState<string | null>("/me.jpg");
   const [palette, setPalette] = useState<RGB[]>(DEFAULT_COLORS);
+  const [fileBaseName, setFileBaseName] = useState<string>("me");
+  const [isDownloading, setIsDownloading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
-      if (previewUrl) {
+      if (previewUrl?.startsWith("blob:")) {
         URL.revokeObjectURL(previewUrl);
       }
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!previewUrl) {
+      setPalette(DEFAULT_COLORS);
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    extractColorsFromImage(previewUrl)
+      .then((colors) => {
+        if (!isCancelled) {
+          setPalette(colors);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setPalette(DEFAULT_COLORS);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
     };
   }, [previewUrl]);
 
@@ -237,7 +265,7 @@ export function ImageGradientUpload() {
     };
   }, [palette]);
 
-  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
 
     if (!file) {
@@ -250,20 +278,119 @@ export function ImageGradientUpload() {
 
     const objectUrl = URL.createObjectURL(file);
     setPreviewUrl(objectUrl);
-    setFileName(file.name);
+    setFileBaseName(file.name.replace(/\.[^/.]+$/, "") || "image");
 
+  };
+
+  const drawRoundedRect = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+  ) => {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + width, y, x + width, y + height, r);
+    ctx.arcTo(x + width, y + height, x, y + height, r);
+    ctx.arcTo(x, y + height, x, y, r);
+    ctx.arcTo(x, y, x + width, y, r);
+    ctx.closePath();
+  };
+
+  const handleDownload = async () => {
+    if (!previewUrl || isDownloading) {
+      return;
+    }
+
+    setIsDownloading(true);
     try {
-      const colors = await extractColorsFromImage(objectUrl);
-      setPalette(colors);
-    } catch {
-      setPalette(DEFAULT_COLORS);
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = previewUrl;
+      });
+
+      const colors = palette.length >= 4 ? palette : DEFAULT_COLORS;
+      const canvas = document.createElement("canvas");
+      const size = 1200;
+      const padding = 150;
+      const imageSize = size - padding * 2;
+
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return;
+      }
+
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, rgbToCss(colors[0], 0.92));
+      gradient.addColorStop(0.45, rgbToCss(colors[1], 0.86));
+      gradient.addColorStop(1, rgbToCss(colors[2], 0.82));
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+
+      const drawBlurBlob = (x: number, y: number, radius: number, color: RGB, alpha: number) => {
+        ctx.save();
+        ctx.filter = "blur(80px)";
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = rgbToCss(color);
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      };
+
+      drawBlurBlob(size * 0.18, size * 0.22, 180, colors[0], 0.7);
+      drawBlurBlob(size * 0.84, size * 0.24, 220, colors[1], 0.58);
+      drawBlurBlob(size * 0.56, size * 0.84, 210, colors[2], 0.52);
+      drawBlurBlob(size * 0.24, size * 0.78, 180, colors[3], 0.45);
+
+      ctx.save();
+      drawRoundedRect(ctx, padding - 6, padding - 6, imageSize + 12, imageSize + 12, 42);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.28)";
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      drawRoundedRect(ctx, padding, padding, imageSize, imageSize, 36);
+      ctx.clip();
+
+      const imageRatio = image.width / image.height;
+      const frameRatio = 1;
+      let drawWidth = imageSize;
+      let drawHeight = imageSize;
+      let dx = padding;
+      let dy = padding;
+
+      if (imageRatio > frameRatio) {
+        drawWidth = imageSize * imageRatio;
+        dx = padding - (drawWidth - imageSize) / 2;
+      } else {
+        drawHeight = imageSize / imageRatio;
+        dy = padding - (drawHeight - imageSize) / 2;
+      }
+
+      ctx.drawImage(image, dx, dy, drawWidth, drawHeight);
+      ctx.restore();
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `${fileBaseName}-gradient.png`;
+      link.click();
+    } finally {
+      setIsDownloading(false);
     }
   };
 
   return (
     <Card className="w-full max-w-[760px] border-white/60 bg-white/70 shadow-xl backdrop-blur-sm">
       <CardHeader className="space-y-1 pb-4 text-center sm:text-left">
-        <CardTitle className="text-xl font-semibold text-zinc-900 sm:text-2xl">Image to Gradient</CardTitle>
+        <CardTitle className="text-xl font-semibold text-zinc-900 sm:text-2xl">Adding Background Tool (ABT)</CardTitle>
         <CardDescription className="text-sm text-zinc-600">
           Upload an image and we generate a soft gradient background from its colors.
         </CardDescription>
@@ -299,18 +426,28 @@ export function ImageGradientUpload() {
             onChange={handleFileChange}
             className="h-10 bg-white/90 text-sm"
           />
-          <Button
-            type="button"
-            className="h-10 min-w-28 bg-zinc-700 text-white hover:bg-zinc-800"
-            onClick={() => {
-              fileInputRef.current?.click();
-            }}
-          >
-            Upload
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              className="h-10 min-w-28 bg-zinc-700 text-white hover:bg-zinc-800"
+              onClick={() => {
+                fileInputRef.current?.click();
+              }}
+            >
+              Upload
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-10 min-w-28"
+              onClick={handleDownload}
+              disabled={!previewUrl || isDownloading}
+            >
+              {isDownloading ? "Preparing..." : "Download"}
+            </Button>
+          </div>
         </div>
 
-        {fileName ? <p className="text-sm text-zinc-600">Selected: {fileName}</p> : null}
       </CardContent>
     </Card>
   );
