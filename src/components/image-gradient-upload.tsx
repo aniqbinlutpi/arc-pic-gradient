@@ -211,9 +211,9 @@ async function extractColorsFromImage(url: string): Promise<RGB[]> {
 }
 
 export function ImageGradientUpload() {
-  const [previewUrl, setPreviewUrl] = useState<string | null>("/me.jpg");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [palette, setPalette] = useState<RGB[]>(DEFAULT_COLORS);
-  const [fileBaseName, setFileBaseName] = useState<string>("me");
+  const [fileBaseName, setFileBaseName] = useState<string>("image");
   const [isDownloading, setIsDownloading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
