@@ -261,21 +261,21 @@ export function ImageGradientUpload() {
   };
 
   return (
-    <Card className="w-full max-w-[880px] border-white/60 bg-white/70 shadow-xl backdrop-blur-sm">
-      <CardHeader className="space-y-2 text-center sm:text-left">
-        <CardTitle className="text-2xl font-semibold text-zinc-900">Image to Gradient</CardTitle>
-        <CardDescription className="text-zinc-600">
+    <Card className="w-full max-w-[760px] border-white/60 bg-white/70 shadow-xl backdrop-blur-sm">
+      <CardHeader className="space-y-1 pb-4 text-center sm:text-left">
+        <CardTitle className="text-xl font-semibold text-zinc-900 sm:text-2xl">Image to Gradient</CardTitle>
+        <CardDescription className="text-sm text-zinc-600">
           Upload an image and we generate a soft gradient background from its colors.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="relative overflow-hidden rounded-2xl border border-white/40 bg-white/40 p-6 sm:p-8" style={gradientStyle}>
+      <CardContent className="space-y-4 sm:space-y-5">
+        <div className="relative overflow-hidden rounded-2xl border border-white/40 bg-white/40 p-3 sm:p-4" style={gradientStyle}>
           <div className="pointer-events-none absolute inset-0">
-            <div className="absolute -left-16 top-10 h-56 w-56 rounded-full opacity-60 blur-3xl" style={{ backgroundColor: rgbToCss(palette[0] ?? DEFAULT_COLORS[0], 0.72) }} />
-            <div className="absolute right-0 top-24 h-64 w-64 rounded-full opacity-55 blur-3xl" style={{ backgroundColor: rgbToCss(palette[1] ?? DEFAULT_COLORS[1], 0.68) }} />
-            <div className="absolute bottom-0 left-1/3 h-60 w-60 rounded-full opacity-50 blur-3xl" style={{ backgroundColor: rgbToCss(palette[2] ?? DEFAULT_COLORS[2], 0.62) }} />
+            <div className="absolute -left-10 top-6 h-40 w-40 rounded-full opacity-60 blur-3xl sm:h-48 sm:w-48" style={{ backgroundColor: rgbToCss(palette[0] ?? DEFAULT_COLORS[0], 0.72) }} />
+            <div className="absolute right-0 top-16 h-44 w-44 rounded-full opacity-55 blur-3xl sm:h-56 sm:w-56" style={{ backgroundColor: rgbToCss(palette[1] ?? DEFAULT_COLORS[1], 0.68) }} />
+            <div className="absolute bottom-0 left-1/3 h-44 w-44 rounded-full opacity-50 blur-3xl sm:h-52 sm:w-52" style={{ backgroundColor: rgbToCss(palette[2] ?? DEFAULT_COLORS[2], 0.62) }} />
           </div>
-          <div className="relative mx-auto aspect-square w-full max-w-[520px] overflow-hidden rounded-xl bg-white/20 shadow-2xl ring-1 ring-white/40 backdrop-blur-sm">
+          <div className="relative mx-auto aspect-square w-full max-w-[min(62vw,42dvh)] overflow-hidden rounded-xl bg-white/20 shadow-2xl ring-1 ring-white/40 backdrop-blur-sm sm:max-w-[min(420px,46dvh)]">
             {previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -291,17 +291,17 @@ export function ImageGradientUpload() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             onChange={handleFileChange}
-            className="h-12 bg-white/90 text-base"
+            className="h-10 bg-white/90 text-sm"
           />
           <Button
             type="button"
-            className="h-12 min-w-32 bg-zinc-700 text-white hover:bg-zinc-800"
+            className="h-10 min-w-28 bg-zinc-700 text-white hover:bg-zinc-800"
             onClick={() => {
               fileInputRef.current?.click();
             }}
