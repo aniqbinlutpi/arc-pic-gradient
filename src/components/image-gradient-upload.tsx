@@ -442,7 +442,6 @@ export function ImageGradientUpload() {
             )}
           </div>
         </div>
-
         <div className="mx-auto flex w-full max-w-[520px] items-center gap-2">
           <Input
             ref={fileInputRef}
